@@ -1,0 +1,107 @@
+# Update Plex for Synology DSM7
+- name: Update Plex for Intel x64
+  hosts: all
+  become: yes
+  gather_facts: yes
+
+  vars:
+    plex_releases_url: https://plex.tv/api/downloads/5.json
+    your_incoming_webhook: "" #replace with your webhook URL
+  tasks:
+  #Query JSON file from Plex site for latest version
+  - name: Retrieve Plex Release JSON
+    ansible.builtin.uri:
+      url: https://plex.tv/api/downloads/5.json
+      method: GET
+      status_code: 200
+    register: plex_json
+
+  #Parse out version specific to Linux - CentOS 7
+  - name: Set Latest Release Fact
+    ansible.builtin.set_fact:
+      latest_release: "{{ plex_json.json.computer['Linux'].version.split('-')[0] }}"
+      #latest_DSM_release: "{{ plex_json.json.nas['Synology (DSM 7)'].version.split('-')[0] }}"
+
+  #Query OS for current version of plex installed    
+  - name: Retrieve Current Plex Version
+    ansible.builtin.shell: rpm -qa plexmediaserver
+    register: plex_version
+
+  #Parses out major version only to compare to online available version
+  - name: Set Current Plex Version Fact
+    ansible.builtin.set_fact:
+      current_release: "{{ plex_version.stdout.split('-')[1] }}"
+
+ # - name: Debug item.build
+    #ansible.builtin.debug:
+      #msg: item.build
+  - name: Debug Latest Release
+    ansible.builtin.debug:
+      msg: '{{ latest_release }}'
+  - name: Debug Current Release
+    ansible.builtin.debug:
+      msg: '{{ current_release }}'
+  - name: Debug architecture
+    ansible.builtin.debug:
+      msg: 'linux-{{ ansible_architecture }}'
+  #Download online version if greater than installed version
+  - name: Download Latest Plex Package (if applicable)
+    ansible.builtin.get_url:
+      url: "{{ item.url }}"
+      checksum: "sha1:{{ item.checksum }}"
+      dest: /tmp
+    loop: "{{ plex_json.json.computer['Linux'].releases }}"
+    when:
+      - latest_release > current_release
+      - item.build == "linux-{{ ansible_architecture }}"
+    register: plex_download
+
+  #Specify Download Location Fact
+  - name: Set Package Download Location Fact
+    ansible.builtin.set_fact:
+      plex_package_file: "{{ item.dest }}"
+    loop: "{{ plex_download.results }}"
+    when: 
+      - latest_release > current_release
+      - (item.skipped is not defined) or
+        (not item.skipped)
+
+  #Install newest version that was downloaded
+  - name: Install Latest Plex Package (if applicable)
+    block:
+    - name: Stop Plex Media Server
+      ansible.builtin.service:
+        name: plexmediaserver.service
+        state: stopped
+
+    - name: Install Plex Media Server
+      ansible.builtin.yum:
+        name: '{{ plex_package_file }}'
+        state: latest
+
+    - name: Start Plex Media Server
+      ansible.builtin.service:
+        name: plexmediaserver.service
+        state: started
+    - name: Notify of Success
+      uri:
+        url: "{{ your_incoming_webhook }}"
+        method: POST
+        body_format: form-urlencoded
+        body:
+          serverName: "{{ latest_release }}"
+        return_content: no
+    rescue:
+    - name: Install Failed! Attempting to Start Plex
+      ansible.builtin.service:
+        name: plexmediaserver.service
+        state: started
+    always:
+    - name: Remove Downloaded Plex Package from /tmp
+      file:
+        path: '{{ plex_package_file }}'
+        state: absent
+      when: latest_release > current_release
+    when:
+      - latest_release > current_release
+      - plex_package_file is defined

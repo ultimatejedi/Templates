@@ -1,0 +1,31 @@
+---
+- hosts: all
+  vars:
+    your_incoming_webhook: "http://192.168.200.10:8123/api/webhook/-ha_trigger_ansible_reboot_required"
+  become: true
+  tasks:
+    - name: upgrade apt packages
+      become: true
+      apt:
+        upgrade: yes
+        update_cache: yes
+      when:
+        - ansible_os_family == "Debian"
+
+    #Check if reboot is required
+    - name: check if system reboot is required
+      become: true
+      stat:
+        path: /var/run/reboot-required
+      register: reboot_required
+
+    - name: Read the return data and POST to webhook if anything other than Opeartional is found in Status
+      uri:
+        url: "{{ your_incoming_webhook }}"
+        method: POST
+        body_format: form-urlencoded
+        body:
+          serverName: "{{ inventory_hostname }}"
+        return_content: no
+      when: 
+        - reboot_required.stat.exists
