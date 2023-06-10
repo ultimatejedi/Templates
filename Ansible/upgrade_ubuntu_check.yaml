@@ -1,7 +1,7 @@
 ---
 - hosts: all
   vars:
-    your_incoming_webhook: "http://192.168.200.10:8123/api/webhook/-ha_trigger_ansible_reboot_required"
+    your_incoming_webhook: "" #Insert your webhook URL here
   become: true
   tasks:
     - name: upgrade apt packages
