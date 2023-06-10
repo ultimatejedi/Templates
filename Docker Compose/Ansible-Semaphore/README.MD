@@ -1,5 +1,5 @@
-#Ansible-Semaphone
-##A GUI interface for Ansible.
+# Ansible-Semaphone
+## A GUI interface for Ansible.
 I got this idea from Christian's video https://www.youtube.com/watch?v=NyOSoLn5T5U
 
 Make sure and go through to change all of the CHANGE_ME entries.
