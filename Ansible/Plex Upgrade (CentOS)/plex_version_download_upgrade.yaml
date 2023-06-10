@@ -7,6 +7,7 @@
   vars:
     plex_releases_url: https://plex.tv/api/downloads/5.json
     your_incoming_webhook: "" #replace with your webhook URL
+    your_failed_webhook: "" #replace with your webhook URL
   tasks:
   #Query JSON file from Plex site for latest version
   - name: Retrieve Plex Release JSON
@@ -68,6 +69,7 @@
 
   #Install newest version that was downloaded
   - name: Install Latest Plex Package (if applicable)
+    
     block:
     - name: Stop Plex Media Server
       ansible.builtin.service:
@@ -91,11 +93,21 @@
         body:
           serverName: "{{ latest_release }}"
         return_content: no
+
     rescue:
     - name: Install Failed! Attempting to Start Plex
       ansible.builtin.service:
         name: plexmediaserver.service
         state: started
+     - name: Notify of Fail
+      uri:
+        url: "{{ your_failed_webhook }}"
+        method: POST
+        body_format: form-urlencoded
+        body:
+          serverName: "{{ latest_release }}"
+        return_content: no       
+       
     always:
     - name: Remove Downloaded Plex Package from /tmp
       file:
